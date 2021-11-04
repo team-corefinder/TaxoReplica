@@ -15,3 +15,7 @@
 
 [BFG Repo Cleaner](https://rtyley.github.io/bfg-repo-cleaner)를 이용합니다. \
 [macOS 용 설치 링크](https://formulae.brew.sh/formula/bfg)
+
+## Amazon Review Data 다운로드 링크
+
+https://drive.google.com/file/d/1gA3g-IG4zcNwOfjQ25Atlf598bnxYB7X/view?usp=sharing
