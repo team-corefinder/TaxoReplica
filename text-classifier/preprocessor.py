@@ -5,25 +5,38 @@ import dgl
 import dgl.function as fn
 import math
 import json
+import re
+import numpy as np
 from torch import nn
 from queue import Queue
 from dgl.data.utils import save_graphs, load_graphs
 
 class TaxoDataManager():
-  def __init__(self, root, taxonomy_file, data_name):
+  def __init__(self, root, taxonomy_file, data_name, word2vec_model):
     self.taxonomy_file = root + taxonomy_file
     self.root = root
     self.data_name = data_name
+
     self.child2parent = {}
     self.parent2child = {}
     self.id2label = {}
     self.label2id = {}
+    self.label2words = {}
+    self.word2vec = {}
+
     self.g = dgl.DGLGraph()
+
     self.label_id = 0
+
+    self.word2vec_model = word2vec_model
+
 
   def get_graph(self):
     return self.g
   
+  def get_feature(self):
+    return self.features
+
   def parent_from_child(self, child):
     return self.child2parent.get(child)
   
@@ -66,6 +79,13 @@ class TaxoDataManager():
         self.id2label[self.label_id] = child
         self.parent2child[self.label_id] = []
 
+        if self.label2words.get(child) ==None:
+          label_name = child.strip()
+          if label_name:
+            words = re.split(r'[,&:]', label_name)
+            words = list(map(lambda element: element.strip().replace(" ", "_").lower(), words))
+            self.label2words[child] = words
+
         self.child2parent[self.label_id] = label[-1]
         self.parent2child[label[-1]].append(self.label_id)
         self.label_id  = self.label_id +1
@@ -74,6 +94,40 @@ class TaxoDataManager():
     self.g = dgl.DGLGraph()
 
     self.g.add_nodes(self.label_id)
+
+    V =  self.word2vec_model.wv.vector_size
+    self.features = torch.zeros(self.label_id, V)
+
+    #root node
+    self.features[0] = torch.ones(V)
+
+    for id in self.id2label:
+      label = self.id2label[id]
+
+      if len(label) == 0 and self.word2vec.get("") != None:
+        self.features[id] = self.word2vec.get("")
+        continue
+      elif len(label) == 0:
+        self.features[id] = torch.tensor(np.random.uniform(-0.25, 0.25, V))
+        self.word2vec[""] = self.features[id]
+        continue
+
+      words = self.label2words[label]
+      sum = torch.zeros(V)
+
+      for word in words:
+        if word in self.word2vec_model.wv:
+          self.word2vec[word] = torch.tensor(self.word2vec_model.wv[word])
+        elif not (word in self.word2vec):
+          self.word2vec[word] = torch.tensor(np.random.uniform(-0.25, 0.25, V))
+        
+        sum = torch.add(sum, self.word2vec[word])
+
+      self.features[id] = torch.divide(sum, len(words))
+      
+
+
+
 
     #save taxonomy in taxo_graph, and id - label pair in taxonomy_id.txt
 
@@ -93,13 +147,32 @@ class TaxoDataManager():
         parent_id = self.child2parent.get(id)
         if parent_id != None:
           fout.write(f"{id}\t{parent_id}\n")
+    
+    with open(self.root + self.data_name + '_label2words.jsonl', "w") as fout:
+      for id in self.id2label:
+        label = self.id2label[id]
+        jsonl_data = {}
+        jsonl_data['id'] = id
+        jsonl_data['label'] = label
+        if len(label) != 0:
+          jsonl_data['words'] =  self.label2words[label]
+        data = json.dumps(jsonl_data)
+        fout.write(f"{data}\n")
+
+    with open(self.root + self.data_name + '_word2vec.jsonl', "w") as fout:
+      for word in self.word2vec:
+        jsonl_data = {}
+        jsonl_data['word'] = word
+        jsonl_data['vector'] = self.word2vec[word].tolist()
+        data = json.dumps(jsonl_data)
+        fout.write(f"{data}\n")
 
 
   def load_graph(self):
     try: 
       glist, label_dict = load_graphs(self.root + self.data_name + '_taxo_graph.bin')
       self.g = glist[0]
-      print("load success")
+      print("Taxonomy graph is loaded")
     except:
       self.load_from_taxofile()
     return
@@ -126,7 +199,6 @@ class TaxoDataManager():
             else:
               self.label2id[segs[1]] = [int(segs[0])]
       
-      print("load taxonomy success")
 
       with open(self.root + self.data_name + '_child2parent.txt', "r") as fin:
         for line in fin:
@@ -136,8 +208,47 @@ class TaxoDataManager():
             self.child2parent[int(segs[0])] = int(segs[1])
             self.parent2child[int(segs[1])].append(int(segs[0]))
 
-      print("load dict success")
-    except:
+      with open(self.root + self.data_name + '_label2words.jsonl', "r") as fin:
+        for line in fin:
+          data = json.loads(line)
+          id = data['id']
+          label = data['label']
+          if( self.label2words.get(label) != None or len(label) == 0):
+            continue
+          words = data['words']
+          self.label2words[label] = words
+
+
+      with open(self.root + self.data_name + '_word2vec.jsonl', "r") as fin:
+        for line in fin:
+          data = json.loads(line)
+          word = data['word']
+          self.word2vec[word] = torch.tensor(data['vector'])
+
+        V = self.word2vec_model.wv.vector_size
+        #calculate feature
+        self.features = torch.zeros(self.label_id, V)
+        #root node
+        self.features[0] = torch.ones(V)
+
+        for id in self.id2label:
+          label = self.id2label[id]
+
+          if len(label) == 0 :
+            self.features[id] = self.word2vec.get("")
+            continue
+
+          words = self.label2words[label]
+
+          sum = torch.zeros(V)
+
+          for word in words:
+            sum = torch.add(sum, self.word2vec[word])
+          self.features[id] = torch.divide(sum, len(words))
+        
+
+      print("Label dictionary is loaded")
+    except :
       self.load_from_taxofile()
 
   def load_all(self):    
@@ -158,6 +269,25 @@ class TaxoDataManager():
           parent_id = self.child2parent.get(id)
           if parent_id != None:
             fout.write(f"{id}\t{parent_id}\n")
+      
+      with open(self.root + self.data_name + '_label2words.jsonl', "w") as fout:
+        for id in self.id2label:
+          label = self.id2label[id]
+          jsonl_data = {}
+          jsonl_data['id'] = id
+          jsonl_data['label'] = label
+          if len(label) != 0:
+            jsonl_data['words'] =  self.label2words[label]
+          data = json.dumps(jsonl_data)
+          fout.write(f"{data}\n")
+
+      with open(self.root + self.data_name + '_word2vec.jsonl', "w") as fout:
+        for word in self.word2vec:
+          jsonl_data = {}
+          jsonl_data['word'] = word
+          jsonl_data['vector'] = self.word2vec[word].tolist()
+          data = json.dumps(jsonl_data)
+          fout.write(f"{data}\n")
 
   def save_all(self):
     self.save_graph()
