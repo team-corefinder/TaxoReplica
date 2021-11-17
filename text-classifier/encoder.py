@@ -8,8 +8,9 @@ from torch import nn
 from transformers import BertTokenizer, BertModel, BertConfig
 
 
-class DocuEncoder():
+class DocuEncoder(nn.Module):
   def __init__(self, config = BertConfig()):
+    super(DocuEncoder, self).__init__()
     try:
       model = BertModel.from_pretrained("./pretrained/BERT_model.pt")
       model.eval()
@@ -33,15 +34,20 @@ class DocuEncoder():
   
   def Tokenize(self, document):
     #input: string -> output: tokenized string tensor
-    tokenized_input = self.tokenizer(document, return_tensors='pt', truncation = True)
+    tokenized_input = self.tokenizer(document, return_tensors='pt', padding='max_length', truncation = True)
     return tokenized_input
+  
+  def DecodeToken(self, tokens):
+    raw = self.tokenizer.convert_ids_to_tokens(tokens)
+    return raw
 
-  def Encode(self, tokens):
+  def forward(self, tokens):
 
     #input: token  -> output : hidden_size tensor
-    output = self.model(**tokens)
-    CLS_token = output.last_hidden_state[0][0]
-    return CLS_token
+    output = self.model(tokens)
+
+    return output.last_hidden_state
+
 
 
 class ClassEncoder(nn.Module):

@@ -24,7 +24,8 @@ class TaxoDataManager():
     self.label2words = {}
     self.word2vec = {}
 
-    self.g = dgl.DGLGraph()
+    empty_tensor = torch.tensor([], dtype=torch.int32)
+    self.g = dgl.graph((empty_tensor, empty_tensor))
 
     self.label_id = 0
 
@@ -90,8 +91,8 @@ class TaxoDataManager():
         self.parent2child[label[-1]].append(self.label_id)
         self.label_id  = self.label_id +1
     
-
-    self.g = dgl.DGLGraph()
+    empty_tensor = torch.tensor([], dtype=torch.int32)
+    self.g = dgl.graph((empty_tensor, empty_tensor))
 
     self.g.add_nodes(self.label_id)
 
@@ -100,6 +101,16 @@ class TaxoDataManager():
 
     #root node
     self.features[0] = torch.ones(V)
+
+    for parent in self.parent2child:
+      childs = self.parent2child[parent]
+      child_num = len(childs)
+      source = torch.tensor(childs, dtype = torch.int32)
+      dest = torch.ones(child_num, dtype = torch.int32) * parent
+      #add self loop, parent -> child and child->parent edges
+      self.g.add_edges(source, dest)
+      self.g.add_edges(dest, source)
+      self.g.add_edges(torch.tensor([parent],dtype = torch.int32), torch.tensor([parent], dtype = torch.int32))
 
     for id in self.id2label:
       label = self.id2label[id]
@@ -126,46 +137,10 @@ class TaxoDataManager():
       self.features[id] = torch.divide(sum, len(words))
       
 
-
-
-
-    #save taxonomy in taxo_graph, and id - label pair in taxonomy_id.txt
-
-    with open(self.root + self.data_name + '_taxonomy_id.txt', "w") as fout:
-      for id in self.id2label:
-        label_name = self.id2label[id]
-        fout.write(f"{id}\t{label_name}\n")
-        self.g.add_edges(id,id)
+    #save taxonomy graph and dictionary
+    self.save_dict()
+    self.save_graph()
     
-        parent_id = self.child2parent.get(id)
-        if parent_id!=None:
-          self.g.add_edges(id, parent_id)
-          self.g.add_edges(parent_id,id)
-  
-    with open(self.root + self.data_name + '_child2parent.txt', "w") as fout:
-      for id in self.id2label:
-        parent_id = self.child2parent.get(id)
-        if parent_id != None:
-          fout.write(f"{id}\t{parent_id}\n")
-    
-    with open(self.root + self.data_name + '_label2words.jsonl', "w") as fout:
-      for id in self.id2label:
-        label = self.id2label[id]
-        jsonl_data = {}
-        jsonl_data['id'] = id
-        jsonl_data['label'] = label
-        if len(label) != 0:
-          jsonl_data['words'] =  self.label2words[label]
-        data = json.dumps(jsonl_data)
-        fout.write(f"{data}\n")
-
-    with open(self.root + self.data_name + '_word2vec.jsonl', "w") as fout:
-      for word in self.word2vec:
-        jsonl_data = {}
-        jsonl_data['word'] = word
-        jsonl_data['vector'] = self.word2vec[word].tolist()
-        data = json.dumps(jsonl_data)
-        fout.write(f"{data}\n")
 
 
   def load_graph(self):
@@ -294,12 +269,11 @@ class TaxoDataManager():
     self.save_dict()
   
 class DocumentManager():
-  def __init__(self, file_name, root, dataset_name, tokenizer, encoder, taxo_manager):
+  def __init__(self, file_name, root, dataset_name, tokenizer, taxo_manager):
     self.file_name = file_name
     self.root = root
     self.dataset_name = dataset_name
     self.tokenizer = tokenizer
-    self.encoder = encoder
     self.id2tokens = {}
     self.id2core = {}
     self.id2category = {}
@@ -345,20 +319,25 @@ class DocumentManager():
           self.id2nonneg[id] = self.id2nonneg[id] + [parent] + self.taxo_manager.child_from_parent(parent)
 
 
-        cls = self.encoder(tokens)
+        
         #truncate with 500 words
-        #token_list = tokens['input_ids'].tolist()[0]
+        token_list = tokens['input_ids'].tolist()
         #token_list = token_list[:500]  
 
-        self.id2tokens[id] = cls.tolist()
+        self.id2tokens[id] = token_list
         self.id2core[id] = core
         self.id2category[id] = category
         self.save_tokens()
 
   def load_tokens (self):
-    with open(self.root + self.dataset_name + '_tokens.json', "r") as fin:
-      data = json.load(fin)
-      self.id2tokens = data
+    try:
+      with open(self.root + self.dataset_name + '_tokens.json', "r") as fin:
+        data = json.load(fin)
+        self.id2tokens = data
+    except:
+      print("Calculating tokens from document...")
+      self.load_from_raw()
+      print("Calculation is finished!")
 
   def load_dicts (self):
     with open(self.root + self.file_name, "r") as fin:
