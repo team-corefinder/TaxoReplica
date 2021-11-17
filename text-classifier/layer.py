@@ -39,7 +39,7 @@ class GCNLayer(nn.Module):
       h = h * g.ndata['norm']
 
       if self.activation:
-          h = self.activation(h)
+        h = self.activation(h)
       return h
 
 class GCN(nn.Module):
