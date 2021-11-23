@@ -21,34 +21,36 @@ class DocuEncoder(nn.Module):
 
     self.model = model
     self.config = config
-    try:
-      self.tokenizer = BertTokenizer.from_pretrained("./pretrained/BERT_tokenizer.pt")
-      self.tokenizer.eval()
-    
-    except:
-      self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-      self.tokenizer.save_pretrained("./pretrained/BERT_tokenizer.pt")
 
   def PrintModelConfig(self):
     print(self.model.config)
-  
-  def Tokenize(self, document):
-    #input: string -> output: tokenized string tensor
-    tokenized_input = self.tokenizer(document, return_tensors='pt', padding='max_length', truncation = True)
-    return tokenized_input
-  
-  def DecodeToken(self, tokens):
-    raw = self.tokenizer.convert_ids_to_tokens(tokens)
-    return raw
+
 
   def forward(self, tokens):
 
     #input: token  -> output : hidden_size tensor
     output = self.model(tokens)
-
     return output.last_hidden_state
 
+class DocumentTokenizer():
+  def __init__(self, max_length):
+    try:
+      self.tokenizer = BertTokenizer.from_pretrained("./pretrained/BERT_tokenizer.pt")
+      self.tokenizer.eval()
+      
+    except:
+      self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+      self.tokenizer.save_pretrained("./pretrained/BERT_tokenizer.pt")
+    self.max_length = max_length
 
+  def Tokenize(self, document):
+    #input: string -> output: tokenized string tensor
+    tokenized_input = self.tokenizer(document, return_tensors='pt', padding='max_length', truncation = True, max_length = self.max_length)
+    return tokenized_input
+  
+  def DecodeToken(self, tokens):
+    raw = self.tokenizer.convert_ids_to_tokens(tokens)
+    return raw
 
 class ClassEncoder(nn.Module):
     def __init__(self, model, feature_model):
