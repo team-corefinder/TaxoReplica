@@ -16,7 +16,8 @@ class TextClassifier(nn.Module):
       self.document_encoder = document_encoder
       self.weight = nn.Parameter(torch.Tensor(dimension[0], dimension[1]))
       self.token_dimension = token_dimension
-      self.activation = nn.Sigmoid()
+      #self.activation = nn.Sigmoid()
+      self.activation = nn.Softmax(dim = 0)
       self.graph = g
       self.features = features
       self.reset_parameters()
@@ -28,24 +29,32 @@ class TextClassifier(nn.Module):
 
     def forward(self,input):
       tokens = input[:self.token_dimension]
-
       mask = input[self.token_dimension:]
 
+      indices = torch.nonzero(tokens)
+      tokens = tokens[indices]
+
+      token = torch.reshape(tokens,(1,-1))
+      mask = torch.reshape(mask, (-1,1))
 
       #get CLS token
-      token = torch.reshape(tokens,(1,-1))
       d = self.document_encoder(token)[0][0]
-      #target = torch.diag(mask).float()
 
-      d = torch.reshape(d, (-1,1))
+      #rescale
+      stdv = 1. / math.sqrt(len(d))
+      d = d * stdv
+
+      d = torch.reshape(d, (-1,1)).cuda()
       h = self.class_encoder(self.graph, self.features)
       #c = torch.transpose(h, 0, 1)
+      #print("sum of h: %f"%torch.sum(h))
       p = torch.mm(h, self.weight)
+      #print("sum of weight: %f"%torch.sum(self.weight))
+      #print("sum of p: %f"%torch.sum(p))
       p = torch.mm(p, d)
       p = torch.exp(p)
       p = self.activation(p)
-      #p = torch.mm(target, p)
+      p = torch.mul(mask, p)
       #del d
       #torch.cuda.empty_cache()
-    
       return p

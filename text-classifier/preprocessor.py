@@ -111,7 +111,8 @@ class TaxoDataManager():
       self.g.add_edges(source, dest)
       self.g.add_edges(dest, source)
       self.g.add_edges(torch.tensor([parent],dtype = torch.int32), torch.tensor([parent], dtype = torch.int32))
-
+    
+    count = 0
     for id in self.id2label:
       label = self.id2label[id]
 
@@ -130,11 +131,14 @@ class TaxoDataManager():
         if word in self.word2vec_model.wv:
           self.word2vec[word] = torch.tensor(self.word2vec_model.wv[word])
         elif not (word in self.word2vec):
+          count +=1
           self.word2vec[word] = torch.tensor(np.random.uniform(-0.25, 0.25, V))
         
         sum = torch.add(sum, self.word2vec[word])
 
       self.features[id] = torch.divide(sum, len(words))
+    
+    print("%d words not in the training set!"%count)
       
 
     #save taxonomy graph and dictionary
@@ -280,6 +284,14 @@ class DocumentManager():
     self.id2pos = {}
     self.id2nonneg = {}
     self.taxo_manager = taxo_manager
+    if dataset_name.startswith('amazon'):
+      self.id_name = "asin"
+      self.text_name = "reviewText"
+      self.core_name = "core_classes"
+    else:
+      self.id_name = "index"
+      self.text_name = "text"
+      self.core_name =  "coreclasses"
 
   def get_ids(self):
     return self.id2tokens.keys()
@@ -292,11 +304,11 @@ class DocumentManager():
 
   def load_from_raw (self):
     with open(self.root + self.file_name, "r") as fin:
-      for line in fin:
+      for i, line in enumerate(fin,0):
         data = json.loads(line)
-        id = data["asin"]
-        raw_text = data["reviewText"]
-        core = data["core_classes"]
+        id = int(data[self.id_name])
+        raw_text = data[self.text_name]
+        core = data[self.core_name]
         category = data["categories"]
         tokens = self.tokenizer(raw_text)
 
@@ -316,7 +328,7 @@ class DocumentManager():
               parent = label_id
 
           self.id2pos[id] = self.id2pos[id] + [parent] + [self.taxo_manager.parent_from_child(parent)]
-          self.id2nonneg[id] = self.id2nonneg[id] + [parent] + self.taxo_manager.child_from_parent(parent)
+          self.id2nonneg[id] = self.id2nonneg[id] + [parent] + [self.taxo_manager.parent_from_child(parent)] + self.taxo_manager.child_from_parent(parent)
 
 
         
@@ -327,13 +339,19 @@ class DocumentManager():
         self.id2tokens[id] = token_list
         self.id2core[id] = core
         self.id2category[id] = category
-        self.save_tokens()
+        if i%5000 == 4999:
+          print("%dth data preprocessed!"%(i+1))
+      self.save_tokens()
 
   def load_tokens (self):
     try:
-      with open(self.root + self.dataset_name + '_tokens.json', "r") as fin:
-        data = json.load(fin)
-        self.id2tokens = data
+      with open(self.root + self.dataset_name + '_tokens.jsonl', "r") as fin:
+        self.id2tokens = {}
+        for line in fin:
+          data = json.loads(line)
+          id = int(data[self.id_name])
+          tokens = data["tokens"]
+          self.id2tokens[id] = tokens
     except:
       print("Calculating tokens from document...")
       self.load_from_raw()
@@ -343,8 +361,8 @@ class DocumentManager():
     with open(self.root + self.file_name, "r") as fin:
       for line in fin:
         data = json.loads(line)
-        id = data["asin"]
-        core = data["core_classes"]
+        id = int(data[self.id_name])
+        core = data[self.core_name]
         category = data["categories"]
 
         #find positive, nonnegative set
@@ -363,12 +381,16 @@ class DocumentManager():
               parent = label_id
 
           self.id2pos[id] = self.id2pos[id] + [parent] + [self.taxo_manager.parent_from_child(parent)]
-          self.id2nonneg[id] = self.id2nonneg[id] + [parent] + self.taxo_manager.child_from_parent(parent)
+          self.id2nonneg[id] = self.id2nonneg[id] + [parent] + [self.taxo_manager.parent_from_child(parent)] + self.taxo_manager.child_from_parent(parent)
 
         self.id2core[id] = core
         self.id2category[id] = category
 
   def save_tokens (self):
-    with open(self.root + self.dataset_name + '_tokens.json', "w") as fout:
-      data = json.dumps(self.id2tokens)
-      fout.write(f"{data}")
+    with open(self.root + self.dataset_name + '_tokens.jsonl', "w") as fout:
+      for i, id in enumerate(self.id2tokens, 0):
+        data = {self.id_name:id, "tokens": self.id2tokens[id]}
+        text = json.dumps(data)
+        fout.write(f"{text}\n")
+        if i%5000 ==4999:
+          print("%d data tokens are saved"%(i+1))
