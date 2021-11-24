@@ -306,7 +306,7 @@ class DocumentManager():
     with open(self.root + self.file_name, "r") as fin:
       for i, line in enumerate(fin,0):
         data = json.loads(line)
-        id = int(data[self.id_name])
+        id = data[self.id_name]
         raw_text = data[self.text_name]
         core = data[self.core_name]
         category = data["categories"]
@@ -349,7 +349,7 @@ class DocumentManager():
         self.id2tokens = {}
         for line in fin:
           data = json.loads(line)
-          id = int(data[self.id_name])
+          id = data[self.id_name]
           tokens = data["tokens"]
           self.id2tokens[id] = tokens
     except:
@@ -361,7 +361,7 @@ class DocumentManager():
     with open(self.root + self.file_name, "r") as fin:
       for line in fin:
         data = json.loads(line)
-        id = int(data[self.id_name])
+        id = data[self.id_name]
         core = data[self.core_name]
         category = data["categories"]
 

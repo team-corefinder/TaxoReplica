@@ -12,12 +12,12 @@ class DocuEncoder(nn.Module):
   def __init__(self, config = BertConfig()):
     super(DocuEncoder, self).__init__()
     try:
-      model = BertModel.from_pretrained("./pretrained/BERT_model.pt")
+      model = BertModel.from_pretrained("/root/data/pretrained/BERT_model.pt")
       model.eval()
 
     except:
       model = BertModel.from_pretrained("bert-base-uncased")
-      model.save_pretrained("./pretrained/BERT_model.pt")
+      model.save_pretrained("/root/data/pretrained/BERT_model.pt")
 
     self.model = model
     self.config = config
