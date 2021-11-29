@@ -6,6 +6,8 @@ import dgl
 import dgl.function as fn
 import torch.optim as optim
 import math
+import time
+import gdown
 from torch.utils.data import TensorDataset 
 from torch.utils.data import DataLoader
 from torch import nn
@@ -15,6 +17,7 @@ from classifier import TextClassifier
 from preprocessor import TaxoDataManager, DocumentManager
 from gensim.test.utils import datapath
 from gensim.models import word2vec
+
 
 
 
@@ -44,8 +47,8 @@ class Trainer():
         def prepare_train(self):
 
                 #document encoder
-                self.d_encoder = DocuEncoder()
-                self.d_tokenizer = DocumentTokenizer(self.T)
+                self.d_encoder = DocuEncoder(self.dir)
+                self.d_tokenizer = DocumentTokenizer(self.dir, self.T)
 
                 #word embedding model for class encoder
                 word2vec_model = word2vec.Word2Vec.load(self.dir + 'pretrained/' + 'embedding')
@@ -57,14 +60,14 @@ class Trainer():
                 self.class_encoder = ClassEncoder(gcn_model, word2vec_model)
 
                 #TaxoDataManager load and manage taxonomy information of dataset.
-                self.tm = TaxoDataManager( self.dir + 'processed_data/'+self.data_name + '/', self.taxonomy_file, self.data_name, word2vec_model)
+                self.tm = TaxoDataManager( self.dir + 'training_data/'+self.data_name + '/', self.taxonomy_file, self.data_name, word2vec_model)
                 self.tm.load_all()
 
-                self.train_dm = DocumentManager(self.train_file, self.dir + 'processed_data/' + self.data_name + '/' ,
+                self.train_dm = DocumentManager(self.train_file, self.dir + 'training_data/' + self.data_name + '/' ,
                                          self.data_name + '_train', self.d_tokenizer.Tokenize,  self.tm)
 
                 if self.test_file:
-                        self.test_dm = DocumentManager(self.test_file, self.dir + 'processed_data/' + self.data_name + '/' ,
+                        self.test_dm = DocumentManager(self.test_file, self.dir + 'training_data/' + self.data_name + '/' ,
                                          self.data_name + '_test', self.d_tokenizer.Tokenize,  self.tm)
                 else:
                         self.test_dm = 0
@@ -142,33 +145,32 @@ class Trainer():
                 self.text_classifier.train()
 
                 for epoch in range(self.epoch): 
+                        start = time.time()
                         running_loss = 0.0
                         batch_loss = 0.0
+                        self.optimizer.zero_grad()
                         for i, train_data in enumerate(self.train_dataloader):
 
-                                self.optimizer.zero_grad()
+
 
                                 inputs, outputs = train_data
-                                predicated = 0
-                                for j, input in enumerate(inputs,0):
-                                        p = self.text_classifier(input.cuda()).cpu()
-                                        if ( j == 0 ):
-                                                predicted = p
-                                        else:
-                                                predicted = torch.cat((predicted, p), 0)
-
-                                predicted = torch.reshape(predicted, (-1, self.L, 1))
-                                loss = self.loss_fun(predicted, outputs)
+                                predicted = self.text_classifier(inputs.cuda())
+                                loss = self.loss_fun(predicted, outputs.cuda())
                                 loss.backward()
-                                self.optimizer.step()
+
 
                                 batch_loss += loss.item()
-                                print('[%d, %5d] batch loss: %.3f' %
-                                        (epoch + 1, i + 1, batch_loss ))
+                                if (i+1)%8 == 0:
+                                        #print("optimized!")
+                                        self.optimizer.step()
+                                        self.optimizer.zero_grad()
+                                        print('[%d, %5d] batch loss: %.3f' %
+                                                (epoch + 1, i + 1, batch_loss ))
                                 running_loss += batch_loss
                                 batch_loss = 0.0
                         print('[%d] total loss: %.3f' %
                                 (epoch + 1, running_loss ))
+                        print('elapsed time : %f'%(time.time()-start))
 
                 print('Finished Training')
 
@@ -179,24 +181,33 @@ class Trainer():
 
 if __name__ == '__main__':
         
-        dir = '/root/text-classifier/TaxoReplica/text-classifier/'
 
+        root = os.path.dirname(os.path.abspath(__file__)) 
+
+        if not os.path.isdir(root + "/data"):
+                url = "https://drive.google.com/drive/folders/1K6oXC2lKZdNcFaPVuCnozHojhBLSfcfb"
+                output ="data"
+                gdown.download_folder(url, output= output)
+
+        dir = root + "/data/"
+
+        """
         #DBPedia dataset
         train_file = 'DBPEDIA_30000_coreclass.jsonl'
         taxonomy_file = 'taxonomy.json'
         data_name = 'DBPEDIA'
-
-
         """
+
+        
         #amazon dataset
         train_file = 'train-with-core-class-1000.jsonl'
         taxonomy_file = 'taxonomy.json'
         data_name = 'amazon'
-        """
+        
         bert_lr = 5e-5
         others_lr = 4e-3
         token_length = 500
-        batch_size =32
+        batch_size = 8
         epoch = 20
         cls_length = 768
 

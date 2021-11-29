@@ -1,2 +1,0 @@
-text-classifier/pretrained/BERT_model.pt/pytorch_model.bin filter=lfs diff=lfs merge=lfs -text
-pytorch_model.bin filter=lfs diff=lfs merge=lfs -text
