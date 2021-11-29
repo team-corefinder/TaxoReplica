@@ -9,18 +9,19 @@ from transformers import BertTokenizer, BertModel, BertConfig
 
 
 class DocuEncoder(nn.Module):
-  def __init__(self, config = BertConfig()):
+  def __init__(self, root, config = BertConfig()):
     super(DocuEncoder, self).__init__()
     try:
-      model = BertModel.from_pretrained("./pretrained/BERT_model.pt")
+      model = BertModel.from_pretrained(root + "pretrained/BERT_model.pt")
       model.eval()
 
     except:
       model = BertModel.from_pretrained("bert-base-uncased")
-      model.save_pretrained("./pretrained/BERT_model.pt")
+      model.save_pretrained(root + "pretrained/BERT_model.pt")
 
     self.model = model
     self.config = config
+    self.root = root
 
   def PrintModelConfig(self):
     print(self.model.config)
@@ -33,15 +34,16 @@ class DocuEncoder(nn.Module):
     return output.last_hidden_state
 
 class DocumentTokenizer():
-  def __init__(self, max_length):
+  def __init__(self, root, max_length):
     try:
-      self.tokenizer = BertTokenizer.from_pretrained("./pretrained/BERT_tokenizer.pt")
+      self.tokenizer = BertTokenizer.from_pretrained(root + "pretrained/BERT_tokenizer.pt")
       self.tokenizer.eval()
       
     except:
       self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-      self.tokenizer.save_pretrained("./pretrained/BERT_tokenizer.pt")
+      self.tokenizer.save_pretrained(root + "pretrained/BERT_tokenizer.pt")
     self.max_length = max_length
+
 
   def Tokenize(self, document):
     #input: string -> output: tokenized string tensor
