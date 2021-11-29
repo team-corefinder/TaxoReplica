@@ -7,7 +7,10 @@ import dgl.function as fn
 import torch.optim as optim
 import math
 import time
+<<<<<<< HEAD
 import gdown
+=======
+>>>>>>> 33d9ae99d3c72e29922e7263e1ad92fe32cd657a
 from torch.utils.data import TensorDataset 
 from torch.utils.data import DataLoader
 from torch import nn
@@ -181,6 +184,7 @@ class Trainer():
 
 if __name__ == '__main__':
         
+<<<<<<< HEAD
 
         root = os.path.dirname(os.path.abspath(__file__)) 
 
@@ -191,6 +195,10 @@ if __name__ == '__main__':
 
         dir = root + "/data/"
 
+=======
+        dir = '/root/data/'
+
+>>>>>>> 33d9ae99d3c72e29922e7263e1ad92fe32cd657a
         """
         #DBPedia dataset
         train_file = 'DBPEDIA_30000_coreclass.jsonl'
@@ -207,7 +215,11 @@ if __name__ == '__main__':
         bert_lr = 5e-5
         others_lr = 4e-3
         token_length = 500
+<<<<<<< HEAD
         batch_size = 8
+=======
+        batch_size =8
+>>>>>>> 33d9ae99d3c72e29922e7263e1ad92fe32cd657a
         epoch = 20
         cls_length = 768
 
