@@ -23,7 +23,8 @@ from gensim.models import word2vec
 
 class Trainer():
         def __init__(self, dir, train_file, taxonomy_file, data_name,
-                        bert_lr, others_lr, token_length, cls_length, batch_size, epoch, test_file = None):
+                        bert_lr, others_lr, token_length, cls_length, 
+                        batch_size, epoch, activation, rescaling,test_file = None):
 
                 self.dir = dir
                 self.train_file = train_file
@@ -42,6 +43,8 @@ class Trainer():
                 self.others_lr = others_lr
                 self.B = batch_size
                 self.epoch = epoch
+                self.activation = activation
+                self.rescaling = rescaling
                 
 
         def prepare_train(self):
@@ -83,7 +86,7 @@ class Trainer():
                 #feature is L x W matrix, word embedding of the classes.
                 self.features = self.tm.get_feature().cuda()
 
-                self.text_classifier = TextClassifier(self.class_encoder, self.d_encoder, (self.W, self.C), self.T, self.g, self.features)
+                self.text_classifier = TextClassifier(self.class_encoder, self.d_encoder, (self.W, self.C), self.T, self.g, self.features, self.activation, self.rescaling)
 
                 sum = 0
                 for c in gcn_model.parameters():
@@ -170,7 +173,7 @@ class Trainer():
                                 batch_loss = 0.0
                         print('[%d] total loss: %.3f' %
                                 (epoch + 1, running_loss ))
-                        print('elapsed time : %f'%(time.time()-start))
+                        print('[%d] elapsed time : %f'%(epoch+1, time.time()-start))
 
                 print('Finished Training')
 
@@ -211,8 +214,15 @@ if __name__ == '__main__':
         epoch = 20
         cls_length = 768
 
-        trainer = Trainer(dir, train_file, taxonomy_file, data_name,
-                        bert_lr, others_lr, token_length, cls_length, batch_size, epoch)
+        #default activation function is Sigmoid
+        activation = nn.Sigmoid()
+        #activation = nn.Softmax(dim = 1)
 
+        rescaling = True
+
+        trainer = Trainer(dir, train_file, taxonomy_file, data_name,
+                        bert_lr, others_lr, token_length, cls_length, 
+                        batch_size, epoch, activation, rescaling)
+ 
         trainer.prepare_train()
         trainer.train()

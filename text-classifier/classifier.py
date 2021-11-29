@@ -6,7 +6,7 @@ from torch import nn
 
 
 class TextClassifier(nn.Module):
-    def __init__(self, class_encoder, document_encoder, dimension, token_dimension, g, features, activation = nn.Sigmoid()):
+    def __init__(self, class_encoder, document_encoder, dimension, token_dimension, g, features, activation, rescaling = False):
       
       #dimension = (class_representation dimension ,document representation dimension)
       #output_dim = total class number
@@ -16,10 +16,11 @@ class TextClassifier(nn.Module):
       self.document_encoder = document_encoder
       self.weight = nn.Parameter(torch.Tensor(dimension[0], dimension[1]))
       self.token_dimension = token_dimension
-      self.activation = nn.Sigmoid()
+      self.activation = activation
       #self.activation = nn.Softmax(dim = 0)
       self.graph = g
       self.features = features
+      self.rescaling = rescaling
       self.reset_parameters()
 
 
@@ -32,10 +33,6 @@ class TextClassifier(nn.Module):
       mask = input[:, self.token_dimension:]
 
       L = mask.shape[1]
-      #indices = torch.nonzero(tokens)
-      #tokens = tokens[indices]
-
-      #token = torch.reshape(tokens,(1,-1))
       mask = torch.reshape(mask, (-1,1,L))
 
       #get CLS token
@@ -50,8 +47,14 @@ class TextClassifier(nn.Module):
       p = torch.transpose(p, 0, 1)
 
       p = torch.matmul(d, p)
-      #p = torch.exp(p)
+
+      if self.rescaling:
+        p = torch.exp(p)
+
       p = self.activation(p)
+      if self.rescaling:
+        p = (p -1/2)*2
+        
       p = torch.mul(mask, p)
       p = torch.transpose(p, 1, 2)
 
