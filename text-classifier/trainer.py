@@ -7,7 +7,6 @@ import dgl.function as fn
 import torch.optim as optim
 import math
 import time
-import gdown
 from torch.utils.data import TensorDataset 
 from torch.utils.data import DataLoader
 from torch import nn
@@ -23,8 +22,7 @@ from gensim.models import word2vec
 
 class Trainer():
         def __init__(self, dir, train_file, taxonomy_file, data_name,
-                        bert_lr, others_lr, token_length, cls_length, 
-                        batch_size, epoch, activation, rescaling,test_file = None):
+                        bert_lr, others_lr, token_length, cls_length, batch_size, epoch, activation = nn.Sigmoid(), rescaling = False, test_file = None):
 
                 self.dir = dir
                 self.train_file = train_file
@@ -50,8 +48,8 @@ class Trainer():
         def prepare_train(self):
 
                 #document encoder
-                self.d_encoder = DocuEncoder(self.dir)
-                self.d_tokenizer = DocumentTokenizer(self.dir, self.T)
+                self.d_encoder = DocuEncoder(dir)
+                self.d_tokenizer = DocumentTokenizer(dir, self.T)
 
                 #word embedding model for class encoder
                 word2vec_model = word2vec.Word2Vec.load(self.dir + 'pretrained/' + 'embedding')
@@ -86,7 +84,9 @@ class Trainer():
                 #feature is L x W matrix, word embedding of the classes.
                 self.features = self.tm.get_feature().cuda()
 
-                self.text_classifier = TextClassifier(self.class_encoder, self.d_encoder, (self.W, self.C), self.T, self.g, self.features, self.activation, self.rescaling)
+                self.text_classifier = TextClassifier(self.class_encoder, self.d_encoder, 
+                                                        (self.W, self.C), self.T, self.g,
+                                                        self.features, self.activation, self.rescaling)
 
                 sum = 0
                 for c in gcn_model.parameters():
@@ -102,7 +102,12 @@ class Trainer():
 
 
                 #set loss function and optimizer for training
-                self.loss_fun = torch.nn.BCELoss(reduction = 'sum')
+                self.loss_fun = torch.nn.BCELoss(reduction='sum')
+                self.loss_kl = torch.nn.KLDivLoss(reduction='batchmean')
+                self.optimizer_kl = optim.AdamW([
+                        {'params': self.text_classifier.document_encoder.parameters(), 'lr': self.bert_lr},
+                        {'params': self.text_classifier.class_encoder.parameters()},
+                        {'params': self.text_classifier.weight}], lr=self.others_lr)
                 self.optimizer = optim.AdamW([
                         {'params': self.text_classifier.document_encoder.parameters(), 'lr': self.bert_lr},
                         {'params': self.text_classifier.class_encoder.parameters()},
@@ -152,6 +157,7 @@ class Trainer():
                         running_loss = 0.0
                         batch_loss = 0.0
                         self.optimizer.zero_grad()
+                        self.optimizer_kl.zero_grad()
                         for i, train_data in enumerate(self.train_dataloader):
 
 
@@ -159,11 +165,26 @@ class Trainer():
                                 inputs, outputs = train_data
                                 predicted = self.text_classifier(inputs.cuda())
                                 loss = self.loss_fun(predicted, outputs.cuda())
-                                loss.backward()
-
-
                                 batch_loss += loss.item()
-                                if (i+1)%8 == 0:
+                                if (i+1) % 25 == 0:
+                                        print('Start self-training...')
+                                        weight = predicted**2 / predicted.sum(axis=0)
+                                        #q = (weight.T / weight.sum(axis=1).T)
+                                        weight_1 = (1-predicted)**2 / (1-predicted).sum(axis=0)
+                                        q = weight / (weight + weight_1)
+                                        # shape of predicted = (Batch size, the number of labels, 1)
+                                        loss_kl = self.loss_kl(q, predicted)
+                                        (loss+loss_kl).backward()
+                                        self.optimizer_kl.step()
+                                        self.optimizer_kl.zero_grad()
+                                        print('[%d, %5d] KL loss: %.3f' %
+                                              (epoch + 1, i + 1, loss_kl.item()))
+                                        
+                                else:
+                                        loss.backward()
+
+
+                                if (i+1)%8 == 0 :
                                         #print("optimized!")
                                         self.optimizer.step()
                                         self.optimizer.zero_grad()
@@ -171,9 +192,13 @@ class Trainer():
                                                 (epoch + 1, i + 1, batch_loss ))
                                 running_loss += batch_loss
                                 batch_loss = 0.0
+
+                                
+
+
                         print('[%d] total loss: %.3f' %
                                 (epoch + 1, running_loss ))
-                        print('[%d] elapsed time : %f'%(epoch+1, time.time()-start))
+                        print('elapsed time : %f'%(time.time()-start))
 
                 print('Finished Training')
 
@@ -184,6 +209,7 @@ class Trainer():
 
 if __name__ == '__main__':
         
+        #dir = './'
 
         root = os.path.dirname(os.path.abspath(__file__)) 
 
@@ -210,19 +236,19 @@ if __name__ == '__main__':
         bert_lr = 5e-5
         others_lr = 4e-3
         token_length = 500
-        batch_size = 8
+        batch_size =4
         epoch = 20
         cls_length = 768
-
+        
         #default activation function is Sigmoid
         activation = nn.Sigmoid()
         #activation = nn.Softmax(dim = 1)
 
-        rescaling = True
+        rescaling = False
 
         trainer = Trainer(dir, train_file, taxonomy_file, data_name,
                         bert_lr, others_lr, token_length, cls_length, 
                         batch_size, epoch, activation, rescaling)
- 
+
         trainer.prepare_train()
         trainer.train()
