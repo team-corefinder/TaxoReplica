@@ -44,6 +44,19 @@ class Trainer():
                 self.activation = activation
                 self.rescaling = rescaling
                 
+        def F1_evaluation(self, true_labels, prediction, threshold):
+                N = true_labels.shape[0]
+                true_labels = torch.reshape(true_labels, (N, -1))
+                prediction = torch.reshape(prediction, (N, -1))
+                sum = 0.0
+                for i in range(N):
+                        mask = prediction[i]>=threshold
+                        pred_label = torch.flatten(torch.nonzero(mask))
+                        numerator = len(set(true_labels[i].tolist()) & set(pred_label.tolist()))
+                        denominator = true_labels.shape[1] + pred_label.shape[0]
+                        sum += numerator * 2 / denominator
+
+                return sum
 
         def prepare_train(self):
 
@@ -120,8 +133,11 @@ class Trainer():
                         tokens = torch.tensor( self.train_dm.get_tokens(document_id) ,dtype = torch.int32)
                         tokens = torch.reshape(tokens, (-1, 1))
                         pos, nonneg = self.train_dm.get_output_label(document_id)
-                        output = torch.zeros(self.L,1)
+                        output = torch.zeros(self.L + 3,1)
                         mask = torch.ones(self.L,1, dtype = torch.int32)
+                        categories = self.train_dm.get_categories(document_id)
+                        for num, category in enumerate(categories,0):
+                                output[self.L + num] = category
 
                         for j in nonneg:
                                 if j in pos:
@@ -137,16 +153,24 @@ class Trainer():
                                 train_y = torch.cat((train_y, output),0)
                 
                 train_x = torch.reshape(train_x, ( -1, self.L + self.T ))
-                train_y = torch.reshape(train_y, ( -1, self.L, 1 ))
+                train_y = torch.reshape(train_y, ( -1, self.L + 3, 1 ))
 
-
+                self.data_size = train_x.shape[0]
                 train_dataset = TensorDataset(train_x, train_y)
 
 
                 self.train_dataloader = DataLoader(train_dataset, batch_size=self.B, shuffle=True)
                 
-        
-        def train(self):
+        def save_model(self):
+                torch.save(self.text_classifier.state_dict(), self.dir+ "trained/text-classifier.pt")
+                return
+
+        def load_pretrained_model(self):
+                self.text_classifier.load_state_dict(torch.load(self.dir+ "trained/text-classifier.pt"))
+                self.text_classifier.eval()
+                return
+
+        def self_train(self):
                 print("Start training! bert learning rate: %f, other learning rate: %f, epoch: %d, batch size: %d"
                         %(self.bert_lr, self.others_lr, self.epoch, self.B))
                 self.text_classifier.cuda()
@@ -161,8 +185,9 @@ class Trainer():
                         for i, train_data in enumerate(self.train_dataloader):
 
 
-
                                 inputs, outputs = train_data
+                                true_labels = outputs[:, self.L:, :]
+                                outputs = outputs[:, :self.L, :]
                                 predicted = self.text_classifier(inputs.cuda())
                                 loss = self.loss_fun(predicted, outputs.cuda())
                                 batch_loss += loss.item()
@@ -201,6 +226,66 @@ class Trainer():
                         print('elapsed time : %f'%(time.time()-start))
 
                 print('Finished Training')
+        
+        def train(self, patience, threshold):
+                print("Start training! bert learning rate: %f, other learning rate: %f, epoch: %d, batch size: %d"
+                        %(self.bert_lr, self.others_lr, self.epoch, self.B))
+                self.text_classifier.cuda()
+                self.text_classifier.train()
+                max_accuracy = 0.0
+                patience_count = 0
+
+                for epoch in range(self.epoch): 
+                        start = time.time()
+                        running_loss = 0.0
+                        batch_loss = 0.0
+
+                        batch_accuracy = 0.0
+                        running_accuracy = 0.0
+
+                        self.optimizer.zero_grad()
+                        for i, train_data in enumerate(self.train_dataloader):
+
+
+
+                                inputs, outputs = train_data
+                                true_labels = outputs[:, self.L:, :]
+                                outputs = outputs[:, :self.L, :]
+
+                                predicted = self.text_classifier(inputs.cuda())
+                                loss = self.loss_fun(predicted, outputs.cuda())
+                                loss.backward()
+
+                                accuracy = self.F1_evaluation(true_labels, predicted, threshold)
+                                batch_accuracy += accuracy
+
+                                batch_loss += loss.item()
+
+                                if (i+1)%8 == 0:
+                                        self.optimizer.step()
+                                        self.optimizer.zero_grad()
+                                        print('[%d, %5d] batch loss: %.3f accuracy : %.3f%%' %
+                                                (epoch + 1, i + 1, batch_loss, batch_accuracy * 100 / (self.B * 7 + predicted.shape[0])))
+                                        running_accuracy += batch_accuracy
+                                        batch_accuracy = 0.0
+                                        running_loss += batch_loss
+                                        batch_loss = 0.0
+                        print('[%d] total loss: %.3f, accuracy: %.3f%%' %
+                                (epoch + 1, running_loss , running_accuracy, running_accuracy * 100 / self.data_size))
+                        print('[%d] elapsed time : %f'%(epoch+1, time.time()-start))
+                        
+                        if (running_accuracy > max_accuracy):
+                                self.save_model()
+                                max_accuracy = running_accuracy
+                                patience_count = 0
+                        else :
+                                patience_count += 1
+
+                        if patience_count >=patience : 
+                                print('Finished Training')
+                                return
+
+                print('Finished Training')
 
 
 
@@ -222,16 +307,17 @@ if __name__ == '__main__':
 
         """
         #DBPedia dataset
-        train_file = 'DBPEDIA_30000_coreclass.jsonl'
+        train_file = 'DBPEDIA-coreclass-45000.jsonl'
         taxonomy_file = 'taxonomy.json'
         data_name = 'DBPEDIA'
         """
 
         
         #amazon dataset
-        train_file = 'train-with-core-class-1000.jsonl'
+        train_file = 'amazon-coreclass-1-10000.jsonl'
         taxonomy_file = 'taxonomy.json'
         data_name = 'amazon'
+        
         
         bert_lr = 5e-5
         others_lr = 4e-3
@@ -251,4 +337,4 @@ if __name__ == '__main__':
                         batch_size, epoch, activation, rescaling)
 
         trainer.prepare_train()
-        trainer.train()
+        trainer.train(patience = 3, threshold = 0.3)
