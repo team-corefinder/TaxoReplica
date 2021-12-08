@@ -273,7 +273,7 @@ class TaxoDataManager():
     self.save_dict()
   
 class DocumentManager():
-  def __init__(self, file_name, root, dataset_name, tokenizer, taxo_manager):
+  def __init__(self, file_name, root, dataset_name, tokenizer, taxo_manager, force_token_reload = False):
     self.file_name = file_name
     self.root = root
     self.dataset_name = dataset_name
@@ -287,11 +287,13 @@ class DocumentManager():
     if dataset_name.startswith('amazon'):
       self.id_name = "asin"
       self.text_name = "reviewText"
-      self.core_name = "core_classes"
+      self.core_name = "coreclasses"
     else:
       self.id_name = "index"
       self.text_name = "text"
       self.core_name =  "coreclasses"
+      
+    self.force_token_reload = force_token_reload
 
   def get_ids(self):
     return self.id2tokens.keys()
@@ -344,18 +346,19 @@ class DocumentManager():
       self.save_tokens()
 
   def load_tokens (self):
-    try:
-      with open(self.root + self.dataset_name + '_tokens.jsonl', "r") as fin:
+    tokens_filepath = self.root + self.dataset_name + '_tokens.jsonl'
+    if self.force_token_reload or not os.path.isfile(tokens_filepath):
+      print("Calculating tokens from document...")
+      self.load_from_raw()
+      print("Calculation is finished!")
+    else:
+      with open(tokens_filepath, "r") as tokens_file:
         self.id2tokens = {}
-        for line in fin:
+        for line in tokens_file:
           data = json.loads(line)
           id = data[self.id_name]
           tokens = data["tokens"]
           self.id2tokens[id] = tokens
-    except:
-      print("Calculating tokens from document...")
-      self.load_from_raw()
-      print("Calculation is finished!")
 
   def load_dicts (self):
     with open(self.root + self.file_name, "r") as fin:
