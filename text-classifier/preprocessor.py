@@ -12,7 +12,7 @@ from queue import Queue
 from dgl.data.utils import save_graphs, load_graphs
 
 class TaxoDataManager():
-  def __init__(self, root, taxonomy_file, data_name, word2vec_model):
+  def __init__(self, root, taxonomy_file, data_name, word2vec_model, force_reload=False):
     self.taxonomy_file = root + taxonomy_file
     self.root = root
     self.data_name = data_name
@@ -30,6 +30,8 @@ class TaxoDataManager():
     self.label_id = 0
 
     self.word2vec_model = word2vec_model
+    
+    self.force_reload = force_reload
 
 
   def get_graph(self):
@@ -148,11 +150,12 @@ class TaxoDataManager():
 
 
   def load_graph(self):
-    try: 
-      glist, label_dict = load_graphs(self.root + self.data_name + '_taxo_graph.bin')
+    filepath = self.root + self.data_name + '_taxo_graph.bin'
+    if os.path.isfile(filepath) and not self.force_reload:
+      glist, label_dict = load_graphs(filepath)
       self.g = glist[0]
       print("Taxonomy graph is loaded")
-    except:
+    else:
       self.load_from_taxofile()
     return
 
@@ -275,7 +278,7 @@ class TaxoDataManager():
     self.save_dict()
   
 class DocumentManager():
-  def __init__(self, file_name, root, dataset_name, tokenizer, taxo_manager):
+  def __init__(self, file_name, root, dataset_name, tokenizer, taxo_manager, force_token_reload = False):
     self.file_name = file_name
     self.root = root
     self.dataset_name = dataset_name
@@ -294,6 +297,8 @@ class DocumentManager():
       self.id_name = "text"
       self.text_name = "text"
       self.core_name =  "coreclasses"
+      
+    self.force_token_reload = force_token_reload
 
   def get_ids(self):
     return self.id2tokens.keys()
@@ -357,18 +362,19 @@ class DocumentManager():
       self.save_tokens()
 
   def load_tokens (self):
-    try:
-      with open(self.root + self.dataset_name + '_tokens.jsonl', "r") as fin:
+    tokens_filepath = self.root + self.dataset_name + '_tokens.jsonl'
+    if self.force_token_reload or not os.path.isfile(tokens_filepath):
+      print("Calculating tokens from document...")
+      self.load_from_raw()
+      print("Calculation is finished!")
+    else:
+      with open(tokens_filepath, "r") as tokens_file:
         self.id2tokens = {}
-        for line in fin:
+        for line in tokens_file:
           data = json.loads(line)
           id = data[self.id_name]
           tokens = data["tokens"]
           self.id2tokens[id] = tokens
-    except:
-      print("Calculating tokens from document...")
-      self.load_from_raw()
-      print("Calculation is finished!")
 
   def load_dicts (self):
     with open(self.root + self.file_name, "r") as fin:
