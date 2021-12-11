@@ -1,3 +1,4 @@
 .ipynb_checkpoints
 default-*.ipynb
 text-classifier/data
+__pycache__/
