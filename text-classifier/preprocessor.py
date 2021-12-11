@@ -165,6 +165,7 @@ class TaxoDataManager():
       self.id2label = {}
       self.child2parent = {}
       self.parent2child = {0:[]}
+      print("Loading Label ID from file...")
       with open(self.root + self.data_name + '_taxonomy_id.txt', "r") as fin:
         for line in fin:
           line = line.strip()
@@ -181,7 +182,7 @@ class TaxoDataManager():
             else:
               self.label2id[segs[1]] = [int(segs[0])]
       
-
+      print("Loading taxonomy from file...")
       with open(self.root + self.data_name + '_child2parent.txt', "r") as fin:
         for line in fin:
           line = line.strip()
@@ -190,6 +191,7 @@ class TaxoDataManager():
             self.child2parent[int(segs[0])] = int(segs[1])
             self.parent2child[int(segs[1])].append(int(segs[0]))
 
+      print("Loading label to words from file...")
       with open(self.root + self.data_name + '_label2words.jsonl', "r") as fin:
         for line in fin:
           data = json.loads(line)
@@ -200,7 +202,7 @@ class TaxoDataManager():
           words = data['words']
           self.label2words[label] = words
 
-
+      print("Loading label embedding from file...")
       with open(self.root + self.data_name + '_word2vec.jsonl', "r") as fin:
         for line in fin:
           data = json.loads(line)
@@ -292,7 +294,7 @@ class DocumentManager():
       self.text_name = "reviewText"
       self.core_name = "coreclasses"
     else:
-      self.id_name = "index"
+      self.id_name = "text"
       self.text_name = "text"
       self.core_name =  "coreclasses"
       
@@ -306,6 +308,9 @@ class DocumentManager():
 
   def get_output_label(self, id):
     return (self.id2pos[id], self.id2nonneg[id])
+
+  def get_categories(self, id):
+    return self.id2category[id]
 
   def load_from_raw (self):
     with open(self.root + self.file_name, "r") as fin:
@@ -343,7 +348,15 @@ class DocumentManager():
 
         self.id2tokens[id] = token_list
         self.id2core[id] = core
-        self.id2category[id] = category
+        parent = 0
+        categories = []
+        for node in category:
+            childs = self.taxo_manager.child_from_parent(parent)
+            label_list = self.taxo_manager.id_from_label(node)
+            label_id = ( list(set(childs) & set(label_list)) )[0]
+            parent = label_id
+            categories = categories + [label_id]
+        self.id2category[id] = categories
         if i%5000 == 4999:
           print("%dth data preprocessed!"%(i+1))
       self.save_tokens()
@@ -365,12 +378,16 @@ class DocumentManager():
 
   def load_dicts (self):
     with open(self.root + self.file_name, "r") as fin:
+      sum = 0
       for line in fin:
         data = json.loads(line)
         id = data[self.id_name]
         core = data[self.core_name]
         category = data["categories"]
-
+        if category[0] == '[':
+          category = category.replace("'", "\"")
+          category = json.loads(category)
+          print(category[0])
         #find positive, nonnegative set
         self.id2pos[id] = []
         self.id2nonneg[id] = []
@@ -390,7 +407,23 @@ class DocumentManager():
           self.id2nonneg[id] = self.id2nonneg[id] + [parent] + [self.taxo_manager.parent_from_child(parent)] + self.taxo_manager.child_from_parent(parent)
 
         self.id2core[id] = core
-        self.id2category[id] = category
+
+        parent = 0
+        categories = [-1, -1, -1]
+        for index, node in enumerate(category,0):
+            childs = self.taxo_manager.child_from_parent(parent)
+            label_list = self.taxo_manager.id_from_label(node)
+            if label_list == None:
+              print(node)
+              label_id = -1
+              sum += 1
+              break
+            else:
+              label_id = ( list(set(childs) & set(label_list)) )[0]
+            parent = label_id
+            categories[index] = label_id
+        self.id2category[id] = categories
+      print("total %d error cases.."%sum)
 
   def save_tokens (self):
     with open(self.root + self.dataset_name + '_tokens.jsonl', "w") as fout:

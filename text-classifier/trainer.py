@@ -222,7 +222,7 @@ if __name__ == '__main__':
 
         """
         #DBPedia dataset
-        train_file = 'DBPEDIA_30000_coreclass.jsonl'
+        train_file = 'DBPEDIA-coreclass-45000.jsonl'
         taxonomy_file = 'taxonomy.json'
         data_name = 'DBPEDIA'
         """
