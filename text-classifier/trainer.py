@@ -234,7 +234,7 @@ class Trainer:
 
     def load_pretrained_model(self):
         self.text_classifier.load_state_dict(
-            torch.load(self.dir + "trained/text-classifier.pt")
+            torch.load(self.dir + "trained/text-classifier-" + self.data_name +".pt")
         )
         self.text_classifier.eval()
         return
@@ -342,7 +342,7 @@ class Trainer:
                     self.optimizer.step()
                     self.optimizer.zero_grad()
                     print(
-                        "[%d, %5d] batch loss: %.3f accuracy : %.3f%% p1 accuracy: %.3f%% p3 accuracy: %.3f%%"
+                        "[%d, %5d] batch loss: %.3f f1 accuracy : %.3f%% p1 accuracy: %.3f%% p3 accuracy: %.3f%%"
                         % (
                             epoch + 1,
                             i + 1,
@@ -361,7 +361,7 @@ class Trainer:
                     running_loss += batch_loss
                     batch_loss = 0.0
             print(
-                "[%d] total loss: %.3f, accuracy: %.3f%% ,p1 accuracy: %.3f%%, p3 accuracy: %.3f%%"
+                "[%d] total loss: %.3f, f1 accuracy: %.3f%% ,p1 accuracy: %.3f%%, p3 accuracy: %.3f%%"
                 % (
                     epoch + 1,
                     running_loss,
@@ -385,6 +385,75 @@ class Trainer:
 
         print("Finished Training")
 
+    def evaluation(self, threshold):
+            print(
+                "Start evaluation!  batch size: %d"
+                % (self.B)
+            )
+            self.text_classifier.cuda()
+            self.text_classifier.eval()
+
+            start = time.time()
+            running_loss = 0.0
+            batch_loss = 0.0
+
+            batch_accuracy = 0.0
+            running_accuracy = 0.0
+
+            p1_batch_accuracy = 0.0
+            p1_running_accuracy = 0.0
+
+            p3_batch_accuracy = 0.0
+            p3_running_accuracy = 0.0
+
+            self.optimizer.zero_grad()
+            for i, train_data in enumerate(self.train_dataloader):
+
+                inputs, outputs = train_data
+                true_labels = outputs[:, self.L :, :]
+                outputs = outputs[:, : self.L, :]
+
+                predicted = self.text_classifier(inputs.cuda())
+
+                accuracy = self.F1_evaluation(true_labels, predicted, threshold)
+                batch_accuracy += accuracy
+
+                accuracy = self.PN_evaluation(true_labels, predicted, 1)
+                p1_batch_accuracy += accuracy
+
+                accuracy = self.PN_evaluation(true_labels, predicted, 3)
+                p3_batch_accuracy += accuracy
+
+
+                if (i + 1) % 8 == 0:
+                    print(
+                        "[%5d]f1 accuracy : %.3f%% p1 accuracy: %.3f%% p3 accuracy: %.3f%%"
+                        % (
+                            i + 1,
+                            batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
+                            p1_batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
+                            p3_batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
+                        )
+                    )
+                    running_accuracy += batch_accuracy
+                    p1_running_accuracy += p1_batch_accuracy
+                    p3_running_accuracy += p3_batch_accuracy
+                    batch_accuracy = 0.0
+                    p1_batch_accuracy = 0.0
+                    p3_batch_accuracy = 0.0
+
+            print(
+                "[%s] f1 accuracy: %.3f%% ,p1 accuracy: %.3f%%, p3 accuracy: %.3f%%"
+                % (
+                    self.data_name,
+                    running_accuracy * 100 / self.data_size,
+                    p1_running_accuracy * 100 / self.data_size,
+                    p3_running_accuracy * 100 / self.data_size,
+                )
+            )
+            print("elapsed time : %f" % ( time.time() - start))
+            print("Finished Evaluation")
+
 
 if __name__ == "__main__":
 
@@ -407,7 +476,7 @@ if __name__ == "__main__":
         """
 
     # amazon dataset
-    train_file = "amazon-coreclass-1-10000.jsonl"
+    train_file = "amazon-coreclass-45000.jsonl"
     taxonomy_file = "taxonomy.json"
     data_name = "amazon"
 
@@ -440,4 +509,6 @@ if __name__ == "__main__":
     )
 
     trainer.prepare_train()
-    trainer.train(patience=3, threshold=0.3)
+    trainer.load_pretrained_model()
+    trainer.evaluation(threshold = 0.3)
+    #trainer.train(patience=3, threshold=0.3)

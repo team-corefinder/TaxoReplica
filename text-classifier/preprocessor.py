@@ -162,6 +162,7 @@ class TaxoDataManager():
       self.id2label = {}
       self.child2parent = {}
       self.parent2child = {0:[]}
+      print("Loading Label ID from file...")
       with open(self.root + self.data_name + '_taxonomy_id.txt', "r") as fin:
         for line in fin:
           line = line.strip()
@@ -178,7 +179,7 @@ class TaxoDataManager():
             else:
               self.label2id[segs[1]] = [int(segs[0])]
       
-
+      print("Loading taxonomy from file...")
       with open(self.root + self.data_name + '_child2parent.txt', "r") as fin:
         for line in fin:
           line = line.strip()
@@ -187,6 +188,7 @@ class TaxoDataManager():
             self.child2parent[int(segs[0])] = int(segs[1])
             self.parent2child[int(segs[1])].append(int(segs[0]))
 
+      print("Loading label to words from file...")
       with open(self.root + self.data_name + '_label2words.jsonl', "r") as fin:
         for line in fin:
           data = json.loads(line)
@@ -197,7 +199,7 @@ class TaxoDataManager():
           words = data['words']
           self.label2words[label] = words
 
-
+      print("Loading label embedding from file...")
       with open(self.root + self.data_name + '_word2vec.jsonl', "r") as fin:
         for line in fin:
           data = json.loads(line)
@@ -285,11 +287,11 @@ class DocumentManager():
     self.id2nonneg = {}
     self.taxo_manager = taxo_manager
     if dataset_name.startswith('amazon'):
-      self.id_name = "asin"
+      self.id_name = "reviewText"
       self.text_name = "reviewText"
       self.core_name = "coreclasses"
     else:
-      self.id_name = "index"
+      self.id_name = "text"
       self.text_name = "text"
       self.core_name =  "coreclasses"
 
