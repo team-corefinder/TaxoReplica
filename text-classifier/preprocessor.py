@@ -44,7 +44,10 @@ class TaxoDataManager():
     return self.child2parent.get(child)
   
   def label_from_id(self, id):
-    return self.get_id2label.get(id)
+    label = self.id2label.get(id)
+    if label == None:
+      return "root"
+    return label
   
   def id_from_label(self, label):
     return self.label2id.get(label)
@@ -52,7 +55,7 @@ class TaxoDataManager():
   def child_from_parent(self, parent):
     return self.parent2child.get(parent)
 
-  def load_from_taxofile(self):
+  def load_from_taxofile(self, normalize = False):
     que = Queue()
 
     with open(self.taxonomy_file, 'r') as taxo:
@@ -102,7 +105,7 @@ class TaxoDataManager():
     self.features = torch.zeros(self.label_id, V)
 
     #root node
-    self.features[0] = torch.ones(V)
+    self.features[0] = torch.ones(V)/V
 
     for parent in self.parent2child:
       childs = self.parent2child[parent]
@@ -137,8 +140,10 @@ class TaxoDataManager():
           self.word2vec[word] = torch.tensor(np.random.uniform(-0.25, 0.25, V))
         
         sum = torch.add(sum, self.word2vec[word])
-
-      self.features[id] = torch.divide(sum, len(words))
+      if normalize:
+        self.features[id] = sum/(torch.norm(sum) * V)
+      else:
+        self.features[id] = torch.divide(sum, len(words))
     
     print("%d words not in the training set!"%count)
       
@@ -159,7 +164,7 @@ class TaxoDataManager():
       self.load_from_taxofile()
     return
 
-  def load_dict(self):
+  def load_dict(self, normalize = False):
     try:
       self.label2id = {}
       self.id2label = {}
@@ -213,7 +218,7 @@ class TaxoDataManager():
         #calculate feature
         self.features = torch.zeros(self.label_id, V)
         #root node
-        self.features[0] = torch.ones(V)
+        self.features[0] = torch.ones(V)/V
 
         for id in self.id2label:
           label = self.id2label[id]
@@ -228,16 +233,19 @@ class TaxoDataManager():
 
           for word in words:
             sum = torch.add(sum, self.word2vec[word])
-          self.features[id] = torch.divide(sum, len(words))
+          if normalize:
+            self.features[id] = sum/(torch.norm(sum) * V)
+          else :
+            self.features[id] = torch.divide(sum, len(words))
         
 
       print("Label dictionary is loaded")
     except :
       self.load_from_taxofile()
 
-  def load_all(self):    
+  def load_all(self, normalize = False):    
     self.load_graph()
-    self.load_dict()
+    self.load_dict(normalize)
 
   def save_graph(self):
     save_graphs(self.root + self.data_name + '_taxo_graph.bin',[self.g])
