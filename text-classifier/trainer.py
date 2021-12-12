@@ -63,6 +63,7 @@ class Trainer:
         prediction = torch.reshape(prediction, (N, -1))
         sum = 0.0
         for i in range(N):
+            prediction[i][0] = 0
             mask = prediction[i] >= threshold
             pred_label = torch.flatten(torch.nonzero(mask))
             numerator = len(set(true_labels[i].tolist()) & set(pred_label.tolist()))
@@ -80,6 +81,7 @@ class Trainer:
         sum = 0.0
         prediction = prediction.cpu()
         for i in range(N):
+            prediction[i][0] = 0
             top_n = sorted(zip(prediction[i].tolist(), ids), reverse=True)[:num]
             top_n = [j for i, j in top_n]
             numerator = len(set(true_labels[i].tolist()) & set(top_n))
@@ -109,7 +111,7 @@ class Trainer:
             self.data_name,
             word2vec_model,
         )
-        self.tm.load_all()
+        self.tm.load_all(normalize = True)
 
         self.train_dm = DocumentManager(
             self.train_file,
@@ -208,6 +210,10 @@ class Trainer:
                     output[j][0] = 1
                 else:
                     mask[j] = 0
+
+            #ignore root node
+            mask[0] = 0
+
             input = torch.cat((tokens, mask), 0)
             if i == 0:
                 train_x = input
@@ -230,12 +236,14 @@ class Trainer:
         torch.save(
             self.text_classifier.state_dict(), self.dir + "trained/text-classifier.pt"
         )
+        print("model saved!")
         return
 
     def load_pretrained_model(self):
         self.text_classifier.load_state_dict(
-            torch.load(self.dir + "trained/text-classifier-" + self.data_name +".pt")
+            torch.load(self.dir + "trained/text-classifier.pt")
         )
+        #torch.load(self.dir + "trained/text-classifier-" + self.data_name +".pt")
         self.text_classifier.eval()
         return
 
@@ -361,9 +369,10 @@ class Trainer:
                     running_loss += batch_loss
                     batch_loss = 0.0
             print(
-                "[%d] total loss: %.3f, f1 accuracy: %.3f%% ,p1 accuracy: %.3f%%, p3 accuracy: %.3f%%"
+                "[%d] total datat: %d, total loss: %.3f, f1 accuracy: %.3f%% ,p1 accuracy: %.3f%%, p3 accuracy: %.3f%%"
                 % (
                     epoch + 1,
+                    self.data_size,
                     running_loss,
                     running_accuracy * 100 / self.data_size,
                     p1_running_accuracy * 100 / self.data_size,
@@ -509,6 +518,6 @@ if __name__ == "__main__":
     )
 
     trainer.prepare_train()
-    trainer.load_pretrained_model()
-    trainer.evaluation(threshold = 0.3)
-    #trainer.train(patience=3, threshold=0.3)
+    #trainer.load_pretrained_model()
+    #trainer.evaluation(threshold = 0.3)
+    trainer.train(patience=3, threshold=0.4)
