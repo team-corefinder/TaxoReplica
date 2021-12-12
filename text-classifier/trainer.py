@@ -1,5 +1,6 @@
 import argparse
 import os
+from networkx.readwrite.json_graph import jit
 import torch
 import gensim
 import dgl
@@ -234,16 +235,16 @@ class Trainer:
 
     def save_model(self):
         torch.save(
-            self.text_classifier.state_dict(), self.dir + "trained/text-classifier.pt"
+            self.text_classifier.state_dict(), 
+            self.dir + "trained/text-classifier-"+self.data_name+".pt"
         )
         print("model saved!")
         return
 
     def load_pretrained_model(self):
         self.text_classifier.load_state_dict(
-            torch.load(self.dir + "trained/text-classifier.pt")
+            torch.load(self.dir + "trained/text-classifier-" + self.data_name +".pt")
         )
-        #torch.load(self.dir + "trained/text-classifier-" + self.data_name +".pt")
         self.text_classifier.eval()
         return
 
@@ -415,7 +416,6 @@ class Trainer:
             p3_batch_accuracy = 0.0
             p3_running_accuracy = 0.0
 
-            self.optimizer.zero_grad()
             for i, train_data in enumerate(self.train_dataloader):
 
                 inputs, outputs = train_data
@@ -423,6 +423,8 @@ class Trainer:
                 outputs = outputs[:, : self.L, :]
 
                 predicted = self.text_classifier(inputs.cuda())
+
+    
 
                 accuracy = self.F1_evaluation(true_labels, predicted, threshold)
                 batch_accuracy += accuracy
@@ -433,15 +435,15 @@ class Trainer:
                 accuracy = self.PN_evaluation(true_labels, predicted, 3)
                 p3_batch_accuracy += accuracy
 
-
                 if (i + 1) % 8 == 0:
                     print(
-                        "[%5d]f1 accuracy : %.3f%% p1 accuracy: %.3f%% p3 accuracy: %.3f%%"
+                        "[%5d]f1 accuracy : %.3f%% p1 accuracy: %.3f%% p3 accuracy: %.3f%%, num_data: %d"
                         % (
                             i + 1,
                             batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
                             p1_batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
                             p3_batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
+                            self.B * 7 + predicted.shape[0]
                         )
                     )
                     running_accuracy += batch_accuracy
@@ -485,7 +487,7 @@ if __name__ == "__main__":
         """
 
     # amazon dataset
-    train_file = "amazon-coreclass-45000.jsonl"
+    train_file = "amazon-coreclass-1000.jsonl"
     taxonomy_file = "taxonomy.json"
     data_name = "amazon"
 
@@ -501,6 +503,7 @@ if __name__ == "__main__":
     # activation = nn.Softmax(dim = 1)
 
     rescaling = False
+    is_train = True
 
     trainer = Trainer(
         dir,
@@ -518,6 +521,9 @@ if __name__ == "__main__":
     )
 
     trainer.prepare_train()
-    #trainer.load_pretrained_model()
-    #trainer.evaluation(threshold = 0.3)
-    trainer.train(patience=3, threshold=0.4)
+    if is_train : 
+        trainer.train(patience=3, threshold=0.95)
+    else : 
+        trainer.load_pretrained_model()
+        trainer.evaluation(threshold = 0.95)
+
