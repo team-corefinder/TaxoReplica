@@ -1,5 +1,6 @@
 import argparse
 import os
+from networkx.readwrite.json_graph import jit
 import torch
 import gensim
 import dgl
@@ -63,6 +64,7 @@ class Trainer:
         prediction = torch.reshape(prediction, (N, -1))
         sum = 0.0
         for i in range(N):
+            prediction[i][0] = 0
             mask = prediction[i] >= threshold
             pred_label = torch.flatten(torch.nonzero(mask))
             numerator = len(set(true_labels[i].tolist()) & set(pred_label.tolist()))
@@ -80,6 +82,7 @@ class Trainer:
         sum = 0.0
         prediction = prediction.cpu()
         for i in range(N):
+            prediction[i][0] = 0
             top_n = sorted(zip(prediction[i].tolist(), ids), reverse=True)[:num]
             top_n = [j for i, j in top_n]
             numerator = len(set(true_labels[i].tolist()) & set(top_n))
@@ -109,7 +112,7 @@ class Trainer:
             self.data_name,
             word2vec_model,
         )
-        self.tm.load_all()
+        self.tm.load_all(normalize = True)
 
         self.train_dm = DocumentManager(
             self.train_file,
@@ -208,6 +211,10 @@ class Trainer:
                     output[j][0] = 1
                 else:
                     mask[j] = 0
+
+            #ignore root node
+            mask[0] = 0
+
             input = torch.cat((tokens, mask), 0)
             if i == 0:
                 train_x = input
@@ -228,8 +235,10 @@ class Trainer:
 
     def save_model(self):
         torch.save(
-            self.text_classifier.state_dict(), self.dir + "trained/text-classifier.pt"
+            self.text_classifier.state_dict(), 
+            self.dir + "trained/text-classifier-"+self.data_name+".pt"
         )
+        print("model saved!")
         return
 
     def load_pretrained_model(self):
@@ -361,9 +370,10 @@ class Trainer:
                     running_loss += batch_loss
                     batch_loss = 0.0
             print(
-                "[%d] total loss: %.3f, f1 accuracy: %.3f%% ,p1 accuracy: %.3f%%, p3 accuracy: %.3f%%"
+                "[%d] total datat: %d, total loss: %.3f, f1 accuracy: %.3f%% ,p1 accuracy: %.3f%%, p3 accuracy: %.3f%%"
                 % (
                     epoch + 1,
+                    self.data_size,
                     running_loss,
                     running_accuracy * 100 / self.data_size,
                     p1_running_accuracy * 100 / self.data_size,
@@ -406,7 +416,6 @@ class Trainer:
             p3_batch_accuracy = 0.0
             p3_running_accuracy = 0.0
 
-            self.optimizer.zero_grad()
             for i, train_data in enumerate(self.train_dataloader):
 
                 inputs, outputs = train_data
@@ -414,6 +423,8 @@ class Trainer:
                 outputs = outputs[:, : self.L, :]
 
                 predicted = self.text_classifier(inputs.cuda())
+
+    
 
                 accuracy = self.F1_evaluation(true_labels, predicted, threshold)
                 batch_accuracy += accuracy
@@ -424,15 +435,15 @@ class Trainer:
                 accuracy = self.PN_evaluation(true_labels, predicted, 3)
                 p3_batch_accuracy += accuracy
 
-
                 if (i + 1) % 8 == 0:
                     print(
-                        "[%5d]f1 accuracy : %.3f%% p1 accuracy: %.3f%% p3 accuracy: %.3f%%"
+                        "[%5d]f1 accuracy : %.3f%% p1 accuracy: %.3f%% p3 accuracy: %.3f%%, num_data: %d"
                         % (
                             i + 1,
                             batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
                             p1_batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
                             p3_batch_accuracy * 100 / (self.B * 7 + predicted.shape[0]),
+                            self.B * 7 + predicted.shape[0]
                         )
                     )
                     running_accuracy += batch_accuracy
@@ -476,7 +487,7 @@ if __name__ == "__main__":
         """
 
     # amazon dataset
-    train_file = "amazon-coreclass-45000.jsonl"
+    train_file = "amazon-coreclass-1000.jsonl"
     taxonomy_file = "taxonomy.json"
     data_name = "amazon"
 
@@ -492,6 +503,7 @@ if __name__ == "__main__":
     # activation = nn.Softmax(dim = 1)
 
     rescaling = False
+    is_train = True
 
     trainer = Trainer(
         dir,
@@ -509,6 +521,9 @@ if __name__ == "__main__":
     )
 
     trainer.prepare_train()
-    trainer.load_pretrained_model()
-    trainer.evaluation(threshold = 0.3)
-    #trainer.train(patience=3, threshold=0.3)
+    if is_train : 
+        trainer.train(patience=3, threshold=0.95)
+    else : 
+        trainer.load_pretrained_model()
+        trainer.evaluation(threshold = 0.95)
+
