@@ -89,6 +89,24 @@ class Trainer:
             denominator = min(true_labels.shape[1], num)
             sum += numerator / denominator
         return sum
+    
+    def MRR_evaluation(self, true_labels, prediction):
+        N = true_labels.shape[0]
+        true_labels = torch.reshape(true_labels, (N, -1))
+        prediction = torch.reshape(prediction, (N, -1))
+        L = prediction.shape[1]
+        ids = list(range(L))
+        acc = 0.0
+        prediction = prediction.cpu()
+        for i in range(N):
+            prediction[i][0] = 0
+            top_n = sorted(zip(prediction[i].tolist(), ids), reverse=True)
+            top_n = [b for a, b in top_n]
+            ranks = [1/rank for rank, label in enumerate(top_n, 1) if label in true_labels[i].tolist()]
+            numerator = sum(ranks)
+            denominator = true_labels.shape[1]
+            acc += numerator / denominator
+        return acc
 
     def prepare_train(self):
 
