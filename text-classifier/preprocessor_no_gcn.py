@@ -211,7 +211,7 @@ class TaxoDataManager():
           self.label2words[label] = words
 
       print("Loading label embedding from file...")
-      with open(self.root + self.data_name + '_word2vec.jsonl', "r") as fin:
+      with open(self.root + self.data_name + '_word2vec_without_GCN.jsonl', "r") as fin:
         for line in fin:
           data = json.loads(line)
           word = data['word']
@@ -276,7 +276,7 @@ class TaxoDataManager():
           data = json.dumps(jsonl_data)
           fout.write(f"{data}\n")
 
-      with open(self.root + self.data_name + '_word2vec.jsonl', "w") as fout:
+      with open(self.root + self.data_name + '_word2vec_without_GCN.jsonl', "w") as fout:
         for word in self.word2vec:
           jsonl_data = {}
           jsonl_data['word'] = word

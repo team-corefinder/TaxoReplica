@@ -23,7 +23,7 @@ class TaxoDataManager():
     self.label2id = {}
     self.label2words = {}
     self.word2vec = {}
-
+    self.depth = [{}, {}, {}]
     empty_tensor = torch.tensor([], dtype=torch.int32)
     self.g = dgl.graph((empty_tensor, empty_tensor))
 
@@ -43,6 +43,9 @@ class TaxoDataManager():
   def parent_from_child(self, child):
     return self.child2parent.get(child)
   
+  def get_depth_list(self, depth):
+    return self.depth[depth]
+
   def label_from_id(self, id):
     label = self.id2label.get(id)
     if label == None:
@@ -116,6 +119,12 @@ class TaxoDataManager():
       self.g.add_edges(source, dest)
       self.g.add_edges(dest, source)
       self.g.add_edges(torch.tensor([parent],dtype = torch.int32), torch.tensor([parent], dtype = torch.int32))
+
+    self.depth = {0:[0], 1:[], 2:[], 3:[]}
+    for dep in range(3):
+      for node in self.depth[dep]:
+        childs = self.parent2child[node]
+        self.depth[dep+1] = self.depth[dep+1] + childs
     
     count = 0
     for id in self.id2label:
@@ -165,9 +174,6 @@ class TaxoDataManager():
     return
 
   def load_dict(self, normalize = False):
-    if self.force_reload:
-      self.load_from_taxofile()
-      return
     try:
       self.label2id = {}
       self.id2label = {}
@@ -218,6 +224,7 @@ class TaxoDataManager():
           self.word2vec[word] = torch.tensor(data['vector'])
 
         V = self.word2vec_model.wv.vector_size
+        V = 300
         #calculate feature
         self.features = torch.zeros(self.label_id, V)
         #root node
@@ -241,7 +248,12 @@ class TaxoDataManager():
           else :
             self.features[id] = torch.divide(sum, len(words))
         
-
+      self.depth = {0:[0], 1:[], 2:[], 3:[]}
+      for dep in range(3):
+        for node in self.depth[dep]:
+          childs = self.parent2child[node]
+          self.depth[dep+1] = self.depth[dep+1] + childs
+      
       print("Label dictionary is loaded")
     except :
       self.load_from_taxofile()
@@ -329,7 +341,10 @@ class DocumentManager():
         data = json.loads(line)
         id = data[self.id_name]
         raw_text = data[self.text_name]
-        core = data[self.core_name]
+        if self.dataset_name.endswith('train'):
+          core = data[self.core_name]
+        else:
+          core = []
         category = data["categories"]
         tokens = self.tokenizer(raw_text)
 
@@ -393,7 +408,10 @@ class DocumentManager():
       for line in fin:
         data = json.loads(line)
         id = data[self.id_name]
-        core = data[self.core_name]
+        if self.dataset_name.endswith('train'):
+          core = data[self.core_name]
+        else:
+          core = []
         category = data["categories"]
         if category[0] == '[':
           category = category.replace("'", "\"")
@@ -425,7 +443,6 @@ class DocumentManager():
             childs = self.taxo_manager.child_from_parent(parent)
             label_list = self.taxo_manager.id_from_label(node)
             if label_list == None:
-              print(node)
               label_id = -1
               sum += 1
               break

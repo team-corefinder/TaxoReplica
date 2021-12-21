@@ -64,4 +64,16 @@ class GCN(nn.Module):
         for layer in self.layers:
             h = layer(g, h)
         return h
+      
+class No_GCN(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super(No_GCN, self).__init__()
+        self.layers = nn.ModuleList()
+
+        self.layers.append(nn.Linear(in_dim, out_dim))
+
+    def forward(self, g, features):
+        for layer in self.layers:
+            features = layer(features)
+        return features
 
